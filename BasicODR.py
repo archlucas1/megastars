@@ -1,6 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.odr import ODR, Model, RealData
+from scipy.odr import ODR, Model, RealData, Data
 import numpy as np
 from pylab import *
 import uncertainties
@@ -8,7 +8,7 @@ import random
 import statsmodels.formula.api as sm
 
 # Load the CSV file into a DataFrame
-fileroot = "C:/Users/Archie/OneDrive - Lancaster University/MEGASTARS/data/onlypitchangle2.csv"
+fileroot = "C:/Users/Archie/OneDrive - Lancaster University/MEGASTARS/data/data2.csv"
 df = pd.read_csv(fileroot)
 
 # Getting relevant data from the dataframe
@@ -57,9 +57,9 @@ x_error_array = np.array(df[x_error])
 y_error_array = np.array(df[y_error])
 
 #setup
-data = RealData(x_array, y_array, x_error_array, y_error_array)
+data = Data(x_array, y_array, x_error_array, y_error_array)
 model = Model(func)
-odr = ODR(data, model, [1,1])
+odr = ODR(data, model, [9.8,-0.1])
 
 #fitting to func
 odr.set_job(fit_type=0)
@@ -99,7 +99,7 @@ plot(x_davis, y_davis, label='Davis et al. (2017)', color = 'brown', linestyle =
 
 #formatting the plot
 plt.ylim([2,10])
-plt.xlim([5,55])
+#plt.xlim([5,55])
 plt.xlabel(x)
 plt.ylabel(y)
 plt.title("Plotting from "+fileroot)
