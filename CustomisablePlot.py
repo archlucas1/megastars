@@ -93,16 +93,21 @@ def CURVE_fit(x, y):
 #plotting ODR fit to data
 def ODR_fit(x_array,y_array,x_error_array,y_error_array):
 
-    #weighting, not error
-    check_zero = np.all((x_error_array != 0))
-    if check_zero:
+    #weighting, not error, checking there are values to be weighted
+    x_check_nonzero = np.all((x_error_array != 0))
+    y_check_nonzero = np.all((y_error_array != 0))
+    if x_check_nonzero and y_check_nonzero:
         x_weight_array = 1/x_error_array
-    check_zero = np.all((y_error_array != 0))
-    if check_zero:
         y_weight_array = 1/y_error_array
-
+        data = Data(x_array, y_array, x_weight_array, y_weight_array)
+    elif x_check_nonzero or y_check_nonzero:
+        print("This ODR fit cannot cope with some values having zero error, and some values having non-zero error. Other functions requested will still be executed. Please wait...")
+        return
+    else:
+        data = Data(x_array, y_array)
+        print("This ODR fit is being done under the assumption that these data points have no uncertainty") 
+        
     #setup
-    data = Data(x_array, y_array, x_weight_array, y_weight_array)
     model = Model(func)
     odr = ODR(data, model, [0,8])
 
