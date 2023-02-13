@@ -297,13 +297,6 @@ x_name = 'Pweighted'
 x_error_name = 's_Pweighted'
 y_name = 'logBHMass'
 y_error_name = 'E_logBHMass'
-'''
-testcorrelation
-x_name = 'xvalue'
-x_error_name = 'errorx'
-y_name = 'yvalue'
-y_error_name = 'errory'
-'''
 
 #friendly formatting from datafile
 x_array = np.array(dataframe[x_name])
@@ -322,7 +315,7 @@ ODR_fit(x_array, y_array, x_error_array, y_error_array) #this does (in theory) a
 CURVE_fit(x_array, y_array) # this does not account for uncertainty in the original datapoints
 
 #Bootstrapping
-samples = 10000 # I'd recommend 5000 but if you're loading a bunch of graphs feel free to turn it down to 1000 or something to speed it up a bit.
+samples = 1000 # I'd recommend 5000 but if you're loading a bunch of graphs feel free to turn it down to 1000 or something to speed it up a bit.
 confidence = 95 # Confidence, as a percentage - I'd recommend 68% or 95% for 1 or 2 sigma
 bootstrap_fit_2(f, x_array, y_array, x_error_array, y_error_array, samples, confidence) #using ODR fit as above for each sample
 bootstrap_fit(x_array, y_array, x_error_array, y_error_array, samples, confidence) #independant method to the one above, using curve_fit
