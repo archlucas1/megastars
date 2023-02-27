@@ -13,12 +13,16 @@ If you want to run other datasets just update the file root, and/or change the c
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.odr import ODR, Model, RealData, Data
+from scipy.stats import bootstrap
+import scipy.stats.distributions as dist
 import numpy as np
 from pylab import *
 import uncertainties
 import random
 import statsmodels.formula.api as sm
 from scipy.optimize import curve_fit
+import bces.bces as BCES
+import nmmn.stats
 
 #the generic function we try to fit for ODR
 def func(beta, x):
@@ -44,6 +48,10 @@ def result(data,err):
     else:
         value = '{:.1u}'.format(value)
     return value
+
+def point_line_distance(x, y, a, b):
+    distance = abs(y - (a * x + b)) / ((a**2 + 1)**0.5)
+    return distance
 
 def lit_plot():
     #plotting other literature
@@ -164,8 +172,6 @@ def bootstrap_fit(x, y, x_error, y_error, n_samples, conf_pct):
     slope_median = np.median(slope_array)
     intercept_median = np.median(intercept_array)
 
-
-
     # Plot the results
     #define confidence and plot various confidence points
     for c in range (conf_pct,conf_pct+1,10):
@@ -195,6 +201,74 @@ def bootstrap_fit(x, y, x_error, y_error, n_samples, conf_pct):
 
         plt.fill_between(xn, yn_lower, yn_upper, alpha=0.1, color = 'red')
 
+def bootstrap_fit_3(x, y, x_error, y_error, n_samples, conf_pct):
+    slope_array = np.zeros(n_samples)
+    intercept_array = np.zeros(n_samples)
+    #slope_sd_array = np.zeros(n_samples)
+    #intercept_sd_array = np.zeros(n_samples)
+
+    # datasets as collumns, rows as data points
+    new_data = [[] for _ in range(n_samples)]
+
+    for i in range(n_samples):
+        sampled_x = np.zeros(len(x))
+        sampled_y = np.zeros(len(x))
+        for j in range(0,len(x)):
+            sampled_x[j] = random.gauss(x[j],x_error[j])
+            sampled_y[j] = random.gauss(y[j],y_error[j])
+        combined_array = np.column_stack((sampled_x,sampled_y))
+        new_data[i].append(combined_array)
+    print(new_data)
+
+
+
+    '''sampled_data = Data(sampled_x, sampled_y)
+        sampled_model = Model(func)
+        sampled_odr = ODR(sampled_data, sampled_model, [0,8])
+
+        #fitting to func
+        sampled_odr.set_job(fit_type=0)
+        sampled_output = sampled_odr.run()
+
+        slope_array[i] = sampled_output.beta[1]
+        #slope_sd_array[i] = sampled_output.sd_beta[1]
+        intercept_array[i] = sampled_output.beta[0]
+        #intercept_sd_array[i] = sampled_output.sd_beta[0]
+
+    # Calculate the mean and standard deviation of the fit parameters
+    slope_median = np.median(slope_array)
+    intercept_median = np.median(intercept_array)
+
+    # Plot the results
+    #define confidence and plot various confidence points
+    for c in range (conf_pct,conf_pct+1,10):
+        # finding values along x according to the fit
+        xn = np.linspace(min(x),max(x),100)
+        yn = np.zeros(len(xn))
+        for i in range (0,len(xn)):
+            yn[i] = intercept_median+slope_median*xn[i]
+
+        #plot confidence intervals in y as error in beta for a given x
+        slope_top = np.percentile(slope_array, c+((100-c)/2))
+        slope_bottom = np.percentile(slope_array, ((100-c)/2))
+        intercept_top = np.percentile(intercept_array, c+((100-c)/2))
+        intercept_bottom = np.percentile(intercept_array, ((100-c)/2))
+
+        #plot best func fit for given confidence
+        label='Bootstapped ODR at '+str(c)+'% Confidence: y = ('+result(slope_median,slope_top-slope_bottom)+')x + ('+result(intercept_median,intercept_top-intercept_bottom)+')'
+        plot(xn,yn,'g-',label = label, color = 'red')
+
+        yn_lower = np.zeros(len(xn))
+        for i in range (0,len(xn)):
+            yn_lower[i] = intercept_bottom+slope_bottom*xn[i]
+
+        yn_upper = np.zeros(len(xn))
+        for i in range (0,len(xn)):
+            yn_upper[i] = intercept_top+slope_top*xn[i]
+
+        plt.fill_between(xn, yn_lower, yn_upper, alpha=0.1, color = 'red')
+'''
+        
 #using a different bootstrapping method to check
 def bootstrap_fit_2(f, x, y, x_err, y_err, n_samples, conf_pct):
   # let's make n_samples number of draws from each data point, and then
@@ -239,7 +313,7 @@ def bootstrap_fit_2(f, x, y, x_err, y_err, n_samples, conf_pct):
 
   # set up an array to use to plot the lines (because each x, y random dataset
   # actually has slightly different min and max x values, and that gets messy)
-  x_fit = np.linspace(np.min(x), np.max(x), num=100, endpoint=True)
+  x_fit = np.linspace(np.min(x), np.max(x), num=1000, endpoint=True)
   y_fit = []
 
   for i, this_a in enumerate(a_boot):
@@ -257,6 +331,7 @@ def bootstrap_fit_2(f, x, y, x_err, y_err, n_samples, conf_pct):
   y_upper  = []
   y_lower  = []
   y_median = []
+  y_difference = []
 
   for i, this_x in enumerate(x_fit):
     # we need to extract all the y-values for every random sample that correspond
@@ -279,52 +354,104 @@ def bootstrap_fit_2(f, x, y, x_err, y_err, n_samples, conf_pct):
 
   # finding equation for the median line
   p_opt, p_cov = curve_fit(f, x_fit, y_median)
-  a = float("{:.3f}".format(p_opt[0]))
-  b = float("{:.3f}".format(p_opt[1]))
+  a = float("{:.6f}".format(p_opt[0]))
+  b = float("{:.6f}".format(p_opt[1]))
 
-  plt.fill_between(x_fit, y_lower, y_upper, alpha=0.4, label='Bootstrapped uncertainty at '+str(conf_pct)+'%')
-  plt.plot(x_fit, y_median, label='Bootstrapped curve_fit: y = ('+str(a)+')x + ('+str(b)+')')
+  for i, this_x in enumerate(x_fit):
+    this_y = y_fit.T[i]
+    spread_above = abs(point_line_distance(x, np.percentile(this_y, conf_hi), p_opt[0], p_opt[1]))
+    spread_below = abs(point_line_distance(x, np.percentile(this_y, conf_lo), p_opt[0], p_opt[1]))
+
+    orthog_distance = spread_above + spread_below
+    y_difference.append(orthog_distance)
+
+  spread = float("{:.4f}".format(np.amin(y_difference)))
+  print("narrowest orthogonal point on bootstrap_2 "+str(spread))
+
+  plt.fill_between(x_fit, y_lower, y_upper, alpha=0.4, label='Uncertainty at '+str(conf_pct)+'%',zorder = 2, color = 'red')
+  plt.plot(x_fit, y_median, label='Bootstrapped linear fit',zorder = 3,linewidth = 2, color = 'red')
+  print(a,'x +',b)
+
+'''# using some recommended BCES package? see https://github.com/rsnemmen/BCES/blob/master/bces-examples.ipynb
+def bces_fit(x, y, x_error, y_error, n_samples, conf_pct):
+
+    # simple linear regression
+    (aa,bb)=np.polyfit(x,y,deg=1)
+    yfit=x*aa+bb
+
+    # BCES fit
+    cov=np.zeros(len(x)) 
+    a,b,aerr,berr,covab=BCES.bcesp(x,x_error,y,y_error,cov,n_samples)
+    bcesMethod=3
+    ybces=a[bcesMethod]*x+b[bcesMethod]
+    errorbar(x,y,x_error,y_error,fmt='o',ls='None')
+    plot(x,yfit,label='Simple regression')
+    plot(x,ybces,label='BCES orthogonal')
+
+    # array with best-fit parameters
+    fitm=np.array([ a[bcesMethod],b[bcesMethod] ])	
+    # covariance matrix of parameter uncertainties
+    covm=np.array([ (aerr[bcesMethod]**2,covab[bcesMethod]), (covab[bcesMethod],berr[bcesMethod]**2) ])	
+    # Gets lower and upper bounds on the confidence band 
+    lcb,ucb,xcb=nmmn.stats.confbandnl(x,y,func,fitm,covm,2,conf_pct/100,x)
+
+    errorbar(x,y,xerr=x_error,yerr=y_error,fmt='o')
+    plot(xcb,a[bcesMethod]*xcb+b[bcesMethod],'-k',label="BCES orthogonal")
+    fill_between(xcb, lcb, ucb, alpha=0.3, facecolor='orange')
+'''
 
 '''UPDATE BELOW FILE BEFORE RUNNING ON YOUR OWN DEVICE
 also feel free to change column names for whatever you want to plot'''
 
 # Load the CSV file into a DataFrame
-fileroot = "C:/Users/Archie/OneDrive - Lancaster University/MEGASTARS/data/data3.csv"
+fileroot = "C:/Users/Archie/OneDrive - Lancaster University/MEGASTARS/data/bosch_S4G_stellarMass.csv"
 dataframe = pd.read_csv(fileroot)
 
 # Getting relevant data from the dataframe
-x_name = 'Pweighted'
-x_error_name = 's_Pweighted'
+x_name = 'logStellarMass'
+x_above_error_name = 'E_logStellarMass'
+x_below_error_name = 'E_logStellarMass'
 y_name = 'logBHMass'
+y_above_error_name = 'E_logBHMass_upper'
+y_below_error_name = 'E_logBHMass_lower'
+
+x_error_name = 'E_logStellarMass'
 y_error_name = 'E_logBHMass'
 
 #friendly formatting from datafile
 x_array = np.array(dataframe[x_name])
 y_array = np.array(dataframe[y_name])
+
+# error bar values w/ different -/+ errors
+asymmetric_x_error = np.array(list(zip(np.array(dataframe[x_below_error_name]), np.array(dataframe[x_above_error_name])))).T
+asymmetric_y_error = np.array(list(zip(np.array(dataframe[y_below_error_name]), np.array(dataframe[y_above_error_name])))).T
+
 x_error_array = np.array(dataframe[x_error_name])
 y_error_array = np.array(dataframe[y_error_name])
 
 #original data with error
-#plt.errorbar(x_array,y_array, y_error_array, x_error_array, fmt='o',color = 'black',alpha=0.3)
+plt.errorbar(x = x_array, y = y_array, yerr = asymmetric_y_error, xerr = asymmetric_x_error, fmt='o',color = 'black',alpha=0.1)
 
 #other literature values
 #lit_plot()
 
 #straight line fits
-ODR_fit(x_array, y_array, x_error_array, y_error_array) #this does (in theory) account for uncertainty in the original datapoints
-CURVE_fit(x_array, y_array) # this does not account for uncertainty in the original datapoints
+#ODR_fit(x_array, y_array, x_error_array, y_error_array) #this does (in theory) account for uncertainty in the original datapoints
+#CURVE_fit(x_array, y_array) # this does not account for uncertainty in the original datapoints
 
 #Bootstrapping
-samples = 1000 # I'd recommend 5000 but if you're loading a bunch of graphs feel free to turn it down to 1000 or something to speed it up a bit.
-confidence = 95 # Confidence, as a percentage - I'd recommend 68% or 95% for 1 or 2 sigma
+samples = 100000 # I'd recommend 5000 but if you're loading a bunch of graphs feel free to turn it down to 1000 or something to speed it up a bit.
+confidence = 99.5 # Confidence, as a percentage - I'd recommend 68% or 95% for 1 or 2 sigma
 bootstrap_fit_2(f, x_array, y_array, x_error_array, y_error_array, samples, confidence) #using ODR fit as above for each sample
-bootstrap_fit(x_array, y_array, x_error_array, y_error_array, samples, confidence) #independant method to the one above, using curve_fit
+#bootstrap_fit(x_array, y_array, x_error_array, y_error_array, samples, confidence) #independant method to the one above, using curve_fit
+#bootstrap_fit_3(x_array, y_array, x_error_array, y_error_array, samples, confidence)
 
 #formatting the plot
 #plt.ylim([2,10])
 #plt.xlim([0,55])
-plt.xlabel(x_name)
-plt.ylabel(y_name)
+plt.xlabel(r"$\rm Stellar\ Mass (M_☉)$")
+plt.ylabel(r"$\rm log(M_B/M_☉)$")
 plt.title("Plotting from "+fileroot+"\n Bootstrapping done with "+str(samples)+" samples")
-plt.legend(loc='upper left')
+plt.legend(loc='lower left')
 plt.show() 
+
